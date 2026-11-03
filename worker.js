@@ -1,4 +1,5 @@
-// ACI Baltic Proxy — v1
+// ACI Baltic Proxy — v1.1: pointDirection-koodi luettelohakuun, gas-neutrality-ryhmä
+// v1
 // Elering dashboard API (Viron sähkö ja kaasu) + ENTSOG Transparency
 // Platform (Suomen ja Baltian kaasun siirto). Molemmat ilman API-avainta.
 //
@@ -30,7 +31,7 @@ const EL_GROUPS = new Set([
   'nps', 'system', 'balance', 'transmission', 'gas_system', 'gas-system',
   'gas_transmission', 'gas-transmission', 'gas_trade', 'gas-trade',
   'gas_balance', 'gas-balance', 'gas_border_trade', 'gas-border-trade',
-  'capacity', 'nominations', 'green', 'umm',
+  'capacity', 'nominations', 'green', 'umm', 'gas-neutrality', 'gas',
 ]);
 
 // ENTSOG-käyttöohjeen (v3.0, 1.10.2025) endpointit.
@@ -176,9 +177,12 @@ async function entsogPoints(url) {
   const all = JSON.parse(await resp.text());
   const rows = all.operatorpointdirections || all.operatorPointDirections || all.data || [];
   const pick = (o, ...ks) => { for (const k of ks) if (o[k] != null) return o[k]; return null; };
-  // Kenttiä ei koota itse: id palautetaan sellaisenaan, koska ENTSOGin
-  // pointDirection-koodin muodostus vaihtelee operaattoreittain.
+  // pointDirection = operatorKey + pointKey + directionKey. Live-testattu
+  // 3.11.2026: 'LV-TSO-0001UGS-00029exit' toimii, luettelon id-kenttä
+  // ('5LV-TSO-0001UGS-00029exitLV-SSO-0001') palauttaa 404.
   const hits = rows.filter(r => JSON.stringify(r).toLowerCase().includes(term)).map(r => ({
+    pointDirection: (r.operatorKey && r.pointKey && r.directionKey)
+      ? `${r.operatorKey}${r.pointKey}${r.directionKey}` : null,
     id: pick(r, 'id'),
     pointLabel: pick(r, 'pointLabel', 'pointName'),
     operatorLabel: pick(r, 'operatorLabel'),
@@ -188,8 +192,9 @@ async function entsogPoints(url) {
   }));
   return json({ upstream: target, term, total_rows: rows.length, count: hits.length,
                 hits, _note: 'total_rows 0 = luettelon avain on eri kuin oletettu; tarkista ' +
-                '?eg=operatorpointdirections&limit=-1. pointDirection-parametrina käytetään ' +
-                'yleensä id-kenttää — varmista yhdellä haulla ennen sarjan rakentamista.' },
+                '?eg=operatorpointdirections&limit=-1. Käytä pointDirection-kenttää, ei id:tä ' +
+                '(id palauttaa 404). Suunta on operaattorin näkökulmasta: UGS exit = ' +
+                'siirtoverkosta varastoon (injektio), entry = varastosta verkkoon (purku).' },
               200, TTL_META);
 }
 
